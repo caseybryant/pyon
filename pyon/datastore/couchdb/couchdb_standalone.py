@@ -166,7 +166,7 @@ class CouchDataStore(object):
             payload['saslPassword'] = sasl_password
         response = requests.post('http://%s:%s/pools/default/buckets' %(self.host, self.port), auth=(self.username, self.password), data=payload)
         if response.status_code != 202:
-            log.error('Unable to create bucket %s on %')
+            log.error('Unable to create bucket %s on %s' % (name, self.host))
             raise BadRequest ('Couchbase returned error - status code:%d - error_string from Couchbase: %s' %(response.status_code, response.content))
         sleep(2)
 
