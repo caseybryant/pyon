@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-"""ION Resource definitions and functions. Extended resource framework"""
+"""ION Resource definitions and functions. Life-cycle FSM. Extended resource framework"""
 
 __author__ = 'Michael Meisinger, Stephen Henrie'
 __license__ = 'Apache 2.0'
@@ -25,24 +25,21 @@ OT = ObjectTypes
 ResourceTypes = DotDict()
 RT = ResourceTypes
 
-# Predicate Type4194304
+# Predicate Type
 Predicates = DotDict()
 PredicateType = DotDict()
 PRED = PredicateType
 
-# Association Types, don't confuse with predicate type!
-AssociationTypes = ['H2H', 'R2R', 'H2R', 'R2H']
-AssociationType = DotDict()
-AssociationType.update(zip(AssociationTypes, AssociationTypes))
-AT = AssociationType
-
-#Compound Associations
+# Compound Associations
 CompoundAssociations = DotDict()
 
-# Life cycle states
+# Life cycle states and availability (visibility) states
 LifeCycleStates = DotDict()
 LCS = LifeCycleStates
 LCS_NONE = "NONE"
+
+AvailabilityStates = DotDict()
+AS = AvailabilityStates
 
 # Life cycle events
 LCE = DotDict()
@@ -124,8 +121,13 @@ def load_definitions():
     # Life cycle states
     initialize_res_lcsms()
     LifeCycleStates.clear()
-    allstates = list(CommonResourceLifeCycleSM.BASE_STATES) + CommonResourceLifeCycleSM.STATE_ALIASES.keys()
-    LifeCycleStates.update(zip(allstates, allstates))
+    lcstates = list(CommonResourceLifeCycleSM.MATURITY)
+    LifeCycleStates.update(zip(lcstates, lcstates))
+
+    AvailabilityStates.clear()
+    avstates = list(CommonResourceLifeCycleSM.AVAILABILITY)
+    AvailabilityStates.update(zip(avstates, avstates))
+
 
     # Life cycle events
     LCE.clear()
@@ -136,14 +138,22 @@ def get_restype_lcsm(restype):
     return lcs_workflows.get(restype, None)
 
 
-def get_maturity_visibility(lcstate):
-    if lcstate == 'RETIRED':
-        return (None, None)
-    return lcstate.split('_')
+# TODO: Remove references to this from coi-services
+# def get_maturity_visibility(lcstate):
 
 
 def is_resource(object):
     return issubtype(object._get_type(), "Resource")
+
+def lcstate(maturity, availability):
+    if not maturity and maturity not in LCS:
+        return BadRequest("lcstate maturity %s unknown" % maturity)
+    if not availability and availability not in AS:
+        return BadRequest("lcstate availability %s unknown" % availability)
+    return "%s_%s" % (maturity, availability)
+
+def lcsplit(lcstate):
+    return lcstate.split('_', 1)
 
 
 class ResourceLifeCycleSM(object):
@@ -158,6 +168,7 @@ class ResourceLifeCycleSM(object):
     def __init__(self, **kwargs):
         self.transitions = {}
         self.initial_state = kwargs.get('initial_state', None)
+        self.initial_availability = kwargs.get('initial_availability', None)
         self._kwargs = kwargs
 
     @classmethod
@@ -218,57 +229,46 @@ class CommonResourceLifeCycleSM(ResourceLifeCycleSM):
     Supports hierarchical states.
     """
 
-    MATURITY = ['DRAFT', 'PLANNED', 'DEVELOPED', 'INTEGRATED', 'DEPLOYED']
-    VISIBILITY = ['PRIVATE', 'DISCOVERABLE', 'AVAILABLE']
+    MATURITY = ['DRAFT', 'PLANNED', 'DEVELOPED', 'INTEGRATED', 'DEPLOYED', 'RETIRED']
+    AVAILABILITY = ['PRIVATE', 'DISCOVERABLE', 'AVAILABLE']
 
-    BASE_STATES = ["%s_%s" % (m, v) for m in MATURITY for v in VISIBILITY]
-    BASE_STATES.append('RETIRED')
+    BASE_STATES = ["%s_%s" % (m, v) for m in MATURITY for v in AVAILABILITY]
 
-    STATE_ALIASES = {}
-
-    for i in list(MATURITY) + VISIBILITY:
-        matchstates = [s for s in BASE_STATES if i in s]
-        if matchstates:
-            STATE_ALIASES[i] = tuple(matchstates)
-
-    STATE_ALIASES['REGISTERED'] = tuple(["%s_%s" % (m, v) for m in MATURITY if m != 'DRAFT' for v in VISIBILITY])
-
-    # Names of transition events
+    # lcstate (maturity) transition events
     PLAN = "plan"
     DEVELOP = "develop"
     INTEGRATE = "integrate"
     DEPLOY = "deploy"
     RETIRE = "retire"
 
+    # Availability transition events
     ANNOUNCE = "announce"
     UNANNOUNCE = "unannounce"
     ENABLE = "enable"
     DISABLE = "disable"
 
     MAT_EVENTS = [PLAN, DEVELOP, INTEGRATE, DEPLOY, RETIRE]
-    VIS_EVENTS = [ANNOUNCE, UNANNOUNCE, ENABLE, DISABLE]
+    AVAIL_EVENTS = [ANNOUNCE, UNANNOUNCE, ENABLE, DISABLE]
 
-    BASE_EVENTS = [
-        PLAN, DEVELOP, INTEGRATE, DEPLOY,
-        ENABLE, DISABLE, ANNOUNCE, UNANNOUNCE,
-        RETIRE
-    ]
+    BASE_EVENTS = MAT_EVENTS + AVAIL_EVENTS
 
     BASE_TRANSITIONS = {}
 
+    # Transitions changing availability
     for m in MATURITY:
-        BASE_TRANSITIONS[("%s_%s" % (m, 'PRIVATE'), ANNOUNCE)] = "%s_%s" % (m, 'DISCOVERABLE')
-        BASE_TRANSITIONS[("%s_%s" % (m, 'DISCOVERABLE'), UNANNOUNCE)] = "%s_%s" % (m, 'PRIVATE')
+        if m != 'RETIRED':
+            BASE_TRANSITIONS[("%s_%s" % (m, 'PRIVATE'), ANNOUNCE)] = "%s_%s" % (m, 'DISCOVERABLE')
+            BASE_TRANSITIONS[("%s_%s" % (m, 'DISCOVERABLE'), UNANNOUNCE)] = "%s_%s" % (m, 'PRIVATE')
 
-        BASE_TRANSITIONS[("%s_%s" % (m, 'DISCOVERABLE'), ENABLE)] = "%s_%s" % (m, 'AVAILABLE')
-        BASE_TRANSITIONS[("%s_%s" % (m, 'AVAILABLE'), DISABLE)] = "%s_%s" % (m, 'DISCOVERABLE')
+            BASE_TRANSITIONS[("%s_%s" % (m, 'DISCOVERABLE'), ENABLE)] = "%s_%s" % (m, 'AVAILABLE')
+            BASE_TRANSITIONS[("%s_%s" % (m, 'AVAILABLE'), DISABLE)] = "%s_%s" % (m, 'DISCOVERABLE')
 
-        BASE_TRANSITIONS[("%s_%s" % (m, 'PRIVATE'), ENABLE)] = "%s_%s" % (m, 'AVAILABLE')
-        BASE_TRANSITIONS[("%s_%s" % (m, 'AVAILABLE'), UNANNOUNCE)] = "%s_%s" % (m, 'PRIVATE')
+            BASE_TRANSITIONS[("%s_%s" % (m, 'PRIVATE'), ENABLE)] = "%s_%s" % (m, 'AVAILABLE')
+            BASE_TRANSITIONS[("%s_%s" % (m, 'AVAILABLE'), UNANNOUNCE)] = "%s_%s" % (m, 'PRIVATE')
 
-    for v in VISIBILITY:
+    # Transitions changing maturity
+    for v in AVAILABILITY:
         BASE_TRANSITIONS[("%s_%s" % ('DRAFT', v), PLAN)] = "%s_%s" % ('PLANNED', v)
-        BASE_TRANSITIONS[("%s_%s" % ('DRAFT', v), RETIRE)] = 'RETIRED'
 
         BASE_TRANSITIONS[("%s_%s" % ('DRAFT', v), DEVELOP)] = "%s_%s" % ('DEVELOPED', v)
         BASE_TRANSITIONS[("%s_%s" % ('PLANNED', v), DEVELOP)] = "%s_%s" % ('DEVELOPED', v)
@@ -285,19 +285,18 @@ class CommonResourceLifeCycleSM(ResourceLifeCycleSM):
         BASE_TRANSITIONS[("%s_%s" % ('DEVELOPED', v), DEPLOY)] = "%s_%s" % ('DEPLOYED', v)
         BASE_TRANSITIONS[("%s_%s" % ('INTEGRATED', v), DEPLOY)] = "%s_%s" % ('DEPLOYED', v)
 
-    BASE_TRANSITIONS[('REGISTERED', RETIRE)] = 'RETIRED'
+        BASE_TRANSITIONS[("%s_%s" % ('DRAFT', v), RETIRE)] = "%s_%s" % ('RETIRED', 'PRIVATE')
+        BASE_TRANSITIONS[("%s_%s" % ('PLANNED', v), RETIRE)] = "%s_%s" % ('RETIRED', 'PRIVATE')
+        BASE_TRANSITIONS[("%s_%s" % ('DEVELOPED', v), RETIRE)] = "%s_%s" % ('RETIRED', 'PRIVATE')
+        BASE_TRANSITIONS[("%s_%s" % ('INTEGRATED', v), RETIRE)] = "%s_%s" % ('RETIRED', 'PRIVATE')
+        BASE_TRANSITIONS[("%s_%s" % ('DEPLOYED', v), RETIRE)] = "%s_%s" % ('RETIRED', 'PRIVATE')
+
 
     def __init__(self, **kwargs):
         super(CommonResourceLifeCycleSM, self).__init__(**kwargs)
-        # Flatten transitions originating from hierarchical states
         for (s0, ev), s1 in self.BASE_TRANSITIONS.iteritems():
-            assert s1 not in self.STATE_ALIASES, "Transition target state cannot be hierarchical"
-            if s0 in self.STATE_ALIASES:
-                for state in self.STATE_ALIASES[s0]:
-                    self.transitions[(state, ev)] = s1
-            else:
-                self.transitions[(s0, ev)] = s1
-                #import pprint; pprint.pprint(self.transitions)
+            self.transitions[(s0, ev)] = s1
+            #import pprint; pprint.pprint(self.transitions)
 
     def _create_basic_transitions(self):
         pass
@@ -368,16 +367,14 @@ class ExtendedResourceContainer(object):
 
         res_container = IonObject(extended_resource_type)
 
-        # @TODO - replace with object level decorators and raise exceptions
-        if not hasattr(res_container, 'origin_resource_type'):
-            log.error('The requested resource %s does not contain a properly set origin_resource_type field.' , extended_resource_type)
-            #raise Inconsistent('The requested resource %s does not contain a properly set origin_resource_type field.' % extended_resource_type)
+        # Check to make sure the extended resource decorator raise OriginResourceType matches the type of the resource type
+        originResourceType = res_container.get_class_decorator_value('OriginResourceType')
+        if originResourceType is None:
+            log.error('The requested extended resource %s does not contain an OriginResourceType decorator.' , extended_resource_type)
 
-        if hasattr(res_container, 'origin_resource_type') and res_container.origin_resource_type != resource_object.type_\
-        and not issubtype(resource_object.type_, res_container.origin_resource_type):
-            log.error('The origin_resource_type of the requested resource %s(%s) does not match the type of the specified resource id(%s).' % (
-                extended_resource_type, res_container.origin_resource_type, resource_object.type_))
-            #raise Inconsistent('The origin_resource_type of the requested resource %s(%s) does not match the type of the specified resource id(%s).' % (extended_resource_type, res_container.origin_resource_type, resource_object.type_))
+        elif originResourceType != resource_object.type_ and not issubtype(resource_object.type_, originResourceType):
+            raise Inconsistent('The OriginResourceType decorator of the requested resource %s(%s) does not match the type of the specified resource id(%s).' % (
+                extended_resource_type, originResourceType, resource_object.type_))
 
         res_container._id = resource_object._id
         res_container.resource = resource_object
@@ -461,13 +458,29 @@ class ExtendedResourceContainer(object):
                 # Field gets value from method or service call (local to current executing process)
                 if decorator == 'Method':
                     deco_value = obj.get_decorator_value(field, decorator)
-                    if deco_value:
-                        method_name = deco_value
-                    else:
-                        method_name = 'get_' + field
+                    method_name = deco_value if deco_value else 'get_' + field
+
                     ret_val = self.execute_method(resource._id, method_name, **kwargs)
                     if ret_val is not None:
                         setattr(obj, field, ret_val)
+
+                elif decorator == 'ServiceRequest':
+                    deco_value = obj.get_decorator_value(field, decorator)
+                    if obj._schema[field]['type'] != 'ServiceRequest':
+                        log.error('The field %s is an incorrect type for a ServiceRequest decorator.', field)
+                        continue
+
+                    method_name = deco_value if deco_value else 'get_' + field
+
+                    if method_name.find('.') == -1:
+                        raise Inconsistent('The field %s decorated as a ServiceRequest only supports remote operations.', field)
+
+                    service_client, operation = self._get_remote_info(method_name)
+                    rmi_call = method_name.split('.')
+                    query_string_params = { 'resource_id': resource._id }
+                    query_string_params.update(self._get_method_arguments(service_client, operation, **kwargs))
+                    ret_val = IonObject(OT.ServiceRequest,service_name=rmi_call[0], service_operation=operation, query_string_params=query_string_params )
+                    setattr(obj, field, ret_val)
 
                 # Fill field based on compound association chains. Results in nested lists of resource objects
                 elif self.is_compound_association(decorator):
@@ -679,16 +692,7 @@ class ExtendedResourceContainer(object):
             #First look to see if this is a remote method
             if method_name.find('.') > 0:
 
-                #This is a remote method.
-                rmi_call = method_name.split('.')
-                #Retrieve service definition
-                service_name = rmi_call[0]
-                operation = rmi_call[1]
-                if service_name == 'resource_registry':
-                    service_client = self._rr
-                else:
-                    target_service = get_service_registry().get_service_by_name(service_name)
-                    service_client = target_service.client(node=self.service_provider.container.instance.node, process=self.service_provider)
+                service_client, operation = self._get_remote_info(method_name)
 
                 methodToCall = getattr(service_client, operation)
                 param_list = [resource_id]
@@ -715,8 +719,36 @@ class ExtendedResourceContainer(object):
             log.error('Error executing method %s for resource id %s: %s' % (method_name, resource_id, str(e)))
             return None
 
-    def _get_method_arguments(self, module, method_name, **kwargs):
 
+    def _get_remote_info(self, method_name):
+        """
+        Returns the service client and operation name
+
+        @param method_name:
+        @return:
+        """
+        #This is a remote method.
+        rmi_call = method_name.split('.')
+        #Retrieve service definition
+        service_name = rmi_call[0]
+        operation = rmi_call[1]
+        if service_name == 'resource_registry':
+            service_client = self._rr
+        else:
+            target_service = get_service_registry().get_service_by_name(service_name)
+            service_client = target_service.client(node=self.service_provider.container.instance.node, process=self.service_provider)
+
+        return service_client, operation
+
+
+    def _get_method_arguments(self, module, method_name, **kwargs):
+        """
+        Returns a dict of the allowable method parameters
+        @param module:
+        @param method_name:
+        @param kwargs:
+        @return:
+        """
         param_dict = {}
 
         try:

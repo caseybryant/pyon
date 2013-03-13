@@ -57,7 +57,8 @@ class ResourceAgentState(BaseEnum):
     CALIBRATE = 'RESOURCE_AGENT_STATE_CALIBRATE'
     DIRECT_ACCESS = 'RESOUCE_AGENT_STATE_DIRECT_ACCESS'
     BUSY = 'RESOURCE_AGENT_STATE_BUSY'
-
+    LOST_CONNECTION = 'RESOURCE_AGENT_STATE_LOST_CONNECTION'
+    ACTIVE_UNKNOWN = 'RESOURCE_AGENT_STATE_ACTIVE_UNKNOWN'
 
 class ResourceAgentEvent(BaseEnum):
     """
@@ -84,6 +85,8 @@ class ResourceAgentEvent(BaseEnum):
     GET_RESOURCE_CAPABILITIES = 'RESOURCE_AGENT_EVENT_GET_RESOURCE_CAPABILITIES'
     DONE = 'RESOURCE_AGENT_EVENT_DONE'
     PING_RESOURCE = 'RESOURCE_AGENT_PING_RESOURCE'
+    LOST_CONNECTION = 'RESOURCE_AGENT_EVENT_LOST_CONNECTION'
+    AUTORECONNECT = 'RESOURCE_AGENT_EVENT_AUTORECONNECT'
 
 class ResourceAgentStreamStatus(BaseEnum):
     """
@@ -707,6 +710,34 @@ class ResourceAgent(BaseResourceAgent):
         self._common_state_exit(*args, **kwargs)
 
     ##############################################################
+    # LOST_CONNECTION event handlers.
+    ##############################################################
+
+    def _handler_lost_connection_enter(self, *args, **kwargs):
+        """
+        """
+        self._common_state_enter(*args, **kwargs)
+
+    def _handler_lost_connection_exit(self, *args, **kwargs):
+        """
+        """
+        self._common_state_exit(*args, **kwargs)
+
+    ##############################################################
+    # ACTIVE_UNKNOWN event handlers.
+    ##############################################################
+
+    def _handler_active_unknown_enter(self, *args, **kwargs):
+        """
+        """
+        self._common_state_enter(*args, **kwargs)
+
+    def _handler_active_unknown_exit(self, *args, **kwargs):
+        """
+        """
+        self._common_state_exit(*args, **kwargs)
+
+    ##############################################################
     # Helpers.
     ##############################################################
     def _common_state_enter(self, *args, **kwargs):
@@ -815,6 +846,11 @@ class ResourceAgent(BaseResourceAgent):
         self._fsm.add_handler(ResourceAgentState.BUSY, ResourceAgentEvent.ENTER, self._handler_busy_enter)
         self._fsm.add_handler(ResourceAgentState.BUSY, ResourceAgentEvent.EXIT, self._handler_busy_exit)
 
+        self._fsm.add_handler(ResourceAgentState.LOST_CONNECTION, ResourceAgentEvent.ENTER, self._handler_lost_connection_enter)
+        self._fsm.add_handler(ResourceAgentState.LOST_CONNECTION, ResourceAgentEvent.EXIT, self._handler_lost_connection_exit)
+
+        self._fsm.add_handler(ResourceAgentState.ACTIVE_UNKNOWN, ResourceAgentEvent.ENTER, self._handler_active_unknown_enter)
+        self._fsm.add_handler(ResourceAgentState.ACTIVE_UNKNOWN, ResourceAgentEvent.EXIT, self._handler_active_unknown_exit)
 
 class ResourceAgentClient(ResourceAgentProcessClient):
     """
