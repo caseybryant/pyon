@@ -31,6 +31,7 @@ from couchbase.exception import MemcachedError
 from requests.exceptions import ConnectionError
 from gevent import sleep
 
+import inspect
 
 
 import couchbase.client
@@ -398,6 +399,11 @@ class CouchDB_DataStore(DataStore):
         # Convert doc into Ion object
         obj = self._persistence_dict_to_ion_object(doc)
         log.debug('Ion object: %s', str(obj))
+
+        if inspect.stack()[1][3] != 'read_doc_mult':
+            print "read \n"
+        else:
+            print "read from mult \n"
         return obj
 
     def read_doc(self, doc_id, rev_id="", datastore_name=""):
@@ -430,7 +436,34 @@ class CouchDB_DataStore(DataStore):
 
     def read_doc_mult(self, object_ids, datastore_name=""):
         ## TODO: find other way to do bulk read
-        return [self.read(id) for id in object_ids]
+        print "read_mult\n"
+        data_temp = [self.read(id) for id in object_ids]
+        data, not_found_list = self._read_doc_mult(object_ids,datastore_name)
+        if not_found_list:
+            raise NotFound("\n".join(not_found_list))
+
+        return data_temp
+
+    def _read_doc_mult(self, object_ids, datastore_name=""):
+        datastore_name = datastore_name or self.datastore_name
+
+        data = json.dumps(object_ids)
+        response = requests.post('http://%s:%s/%s/_all_docs?include_docs=true' %(self.host, self.port, datastore_name), auth=(self.username, self.password), data=data)
+        if response.status_code != 200:
+            raise ServerError("Could not communicate with Couchbase server")
+
+        data = []
+        notfound_list = []
+        rows = json.loads(response.content)
+        for row in rows['rows']:
+            if 'doc' in row and 'json' in row['doc']:
+                data.append(self._persistence_dict_to_ion_object(row['doc']['json']))
+            elif 'error' in row:
+                data.append(None)
+                notfound_list.append('Object with id %s does not exist.' % row['key'])
+
+        return data, notfound_list
+
 
     def read_attachment(self, doc, attachment_name, datastore_name=""):
         if not isinstance(attachment_name, str):
@@ -1297,7 +1330,7 @@ class CouchDB_DataStore(DataStore):
             return (res_ids, res_assocs)
         else:
             if alt_id_ns and not alt_id:
-                res_docs = [self._persistence_dict_to_ion_object(row.doc) for row in rows if row['key'][1] == alt_id_ns]
+                res_docs = [self._persistence_dict_to_ion_object(row['doc']['json']) for row in rows if row['key'][1] == alt_id_ns]
             else:
                 #res_docs = [self._persistence_dict_to_ion_object(row.doc) for row in rows]
                 ###res_docs = [self._persistence_dict_to_ion_object(dict(_id=row['id'], **row['doc']['json'])) for row in rows]

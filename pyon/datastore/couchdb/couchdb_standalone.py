@@ -72,9 +72,9 @@ class CouchDataStore(object):
         log.info('Connecting to Couchbase standalone server: %s, username: %s datastore: %s' % (connection_str, self.username, self.datastore_name))
         # Just to test existence of the datastore
         if self.datastore_name:
-            print "\n\n datastore name is set\n\n"
+            ####print "\n\n datastore name is set\n\n"
             if not self.exists_datastore(self.datastore_name):
-                print "\n\n try creating datastore ", self.datastore_name, "\n\n\n"
+                ####print "\n\n try creating datastore ", self.datastore_name, "\n\n\n"
                 self.create_datastore()
                 ds, _ = self._get_datastore()
 
@@ -104,7 +104,7 @@ class CouchDataStore(object):
             datastore_name = self.datastore_name
         else:
             raise BadRequest("No data store name provided")
-        print "\n\n get_data_name 2", datastore_name
+        ####print "\n\n get_data_name 2", datastore_name
         return datastore_name
 
     def _get_datastore(self, datastore_name=None):
@@ -133,7 +133,7 @@ class CouchDataStore(object):
         """
         datastore_name = self._get_datastore_name(datastore_name)
         log.debug("Create datastore name: %s" %datastore_name)
-        print "\n\n\n create datastore  ", datastore_name, "\n\n"
+        ####print "\n\n\n create datastore  ", datastore_name, "\n\n"
 
         bucket_password = get_safe(self.config, 'server.couchbase.bucket_password') or None
         ram_quota_mb = get_safe(self.config, 'server.couchbase.bucket_ram_quota_samll_mb') or None
