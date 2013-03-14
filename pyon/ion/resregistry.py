@@ -125,7 +125,7 @@ class ResourceRegistry(object):
     def update(self, object):
         if object is None:
             raise BadRequest("Object not present")
-        if not hasattr(object, "_id") or not hasattr(object, "_rev"):
+        if not hasattr(object, "_id"): #or not hasattr(object, "_rev"):
             raise BadRequest("Object does not have required '_id' or '_rev' attribute")
             # Do an check whether LCS has been modified
         res_obj = self.read(object._id)

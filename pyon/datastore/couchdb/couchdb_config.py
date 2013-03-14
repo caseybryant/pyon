@@ -167,6 +167,13 @@ function(doc) {
     # Association (triple) related views
     'association':{
         # Subject to object lookup (for range queries)
+        #Todo Not a good way to get all the data.
+        'by_doc':{
+            'map':"""
+function(doc, meta) {
+    emit(meta.id, null);
+}""",
+            },
         'by_sub':{
             'map':"""
 function(doc) {
