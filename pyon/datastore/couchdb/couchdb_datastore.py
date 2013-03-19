@@ -450,7 +450,6 @@ class CouchDB_DataStore(DataStore):
         if response.status_code == 404:
             uri = 'http://%s:%s/%s/_all_docs?include_docs=true' % (self.host, self.port, datastore_name)
             data = str(data)
-            print ("Couchbase server returned an error. \n Returned code: %d \n Returned content:%s \n URI: %s \n Data:%s " %(response.status_code, response.content, uri, data))
             log.error("Couchbase server returned an error. \n Returned code: %d \n Returned content:%s \n URI: %s \n Data:%s " %(response.status_code, response.content, uri, data))
             notfound_list.append('Object id does not exist.')
         elif response.status_code == 200:
