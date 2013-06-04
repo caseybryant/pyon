@@ -220,8 +220,11 @@ class ExceptionFactory(object):
         else:
             out = self._default(message)
         if stacks:
+            last_stack=None
             for label, stack in stacks:
-                out.add_stack(label, stack)
+                if last_stack and stack!=last_stack:
+                    out.add_stack(label, stack)
+                    last_stack=stack
         return out
 
 
